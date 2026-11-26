@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>转义文本 → 真实换行 → Markdown / JSON / XML 预览</title>
+
+<script>
+  (function () {
+    try {
+      var d = document.documentElement;
+      if (localStorage.getItem('theme') === 'light') d.setAttribute('data-theme', 'light');
+      var v = localStorage.getItem('view');
+      if (v === 'input' || v === 'preview' || v === 'both') d.setAttribute('data-view-init', v);
+      var m = localStorage.getItem('mode');
+      if (m === 'text' || m === 'md' || m === 'json' || m === 'xml') d.setAttribute('data-mode-init', m);
+    } catch (e) {}
+  })();
+</script>
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #14171e;
+    --border: #262b36;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --accent: #4f8cff;
+    --accent-text: #ffffff;
+    --code-bg: #0b0e13;
+    --code-text: #9fb4d8;
+    --btn-bg: #222836;
+    --btn-bg-hover: #2c3446;
+    --btn-border-hover: #3a4358;
+    --stat: #5f6880;
+    --th-bg: #1c212b;
+    --strong: #ffffff;
+    --toast-bg: #2a3040;
+    --toast-shadow: 0 8px 28px rgba(0, 0, 0, .45);
+    --scroll: #333b4c;
+    --scroll-hover: #444e63;
+    --jt-key: #7ee787;
+    --jt-str: #a5d6ff;
+    --jt-num: #ffa657;
+    --jt-bool: #ff7b72;
+    --jt-line-hover: rgba(127, 140, 170, .10);
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --panel-2: #eef1f5;
+    --border: #dde2ea;
+    --text: #1b1f27;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --code-bg: #eef1f6;
+    --code-text: #3b5bdb;
+    --btn-bg: #ffffff;
+    --btn-bg-hover: #eef1f6;
+    --btn-border-hover: #c4ccd8;
+    --stat: #8a93a5;
+    --th-bg: #eef1f5;
+    --strong: #000000;
+    --toast-bg: #ffffff;
+    --toast-shadow: 0 8px 28px rgba(15, 23, 42, .16);
+    --scroll: #c9d1dd;
+    --scroll-hover: #b3bccc;
+    --jt-key: #0550ae;
+    --jt-str: #0a3069;
+    --jt-num: #953800;
+    --jt-bool: #cf222e;
+    --jt-line-hover: rgba(15, 23, 42, .05);
+    color-scheme: light;
+  }
+
+  * { transition: background-color .18s ease, border-color .18s ease, color .18s ease; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+
+  .hidden { display: none !important; }
+
+  header { padding: 13px 18px 11px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  h1 { margin: 0 0 10px; font-size: 15px; font-weight: 600; letter-spacing: .2px; }
+  h1 span { color: var(--muted); font-weight: 400; font-size: 12.5px; margin-left: 8px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 12px; font-size: 13px; color: var(--muted); }
+  .toolbar label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .toolbar input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+  .toolbar code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 11.5px; color: var(--code-text); }
+  .spacer { flex: 1 1 auto; }
+  .divider { width: 1px; height: 18px; background: var(--border); flex: 0 0 auto; }
+  .group-label { font-size: 12px; color: var(--muted); }
+
+  button {
+    font: inherit; font-size: 12.5px; color: var(--text); background: var(--btn-bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  button:active { transform: translateY(1px); }
+  #theme { min-width: 92px; text-align: center; }
+
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--btn-bg); flex: 0 0 auto; }
+  .segmented button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 5px 12px; font-size: 12.5px; }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button:hover { background: var(--btn-bg-hover); border-color: transparent; }
+  .segmented button.active, .segmented button.active:hover { background: var(--accent); color: var(--accent-text); font-weight: 500; }
+
+  main { flex: 1 1 auto; display: flex; min-height: 0; min-width: 0; }
+  .pane { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  main[data-view="input"] .pane-preview { display: none; }
+  main[data-view="preview"] .pane-input { display: none; }
+
+  .split-handle {
+    display: none; flex: 0 0 5px; cursor: col-resize; background: var(--border); position: relative; z-index: 5; transition: background-color .15s;
+  }
+  .split-handle::after {
+    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 1px; height: 32px; background: var(--muted); opacity: .35; border-radius: 1px;
+  }
+  main[data-view="both"] .split-handle { display: block; }
+  .split-handle:hover, .split-handle.dragging { background: var(--accent); }
+  .split-handle:hover::after, .split-handle.dragging::after { opacity: 0; }
+
+  .pane-title {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 7px 14px; font-size: 12px; color: var(--muted);
+    border-bottom: 1px solid var(--border); background: var(--panel-2);
+    white-space: nowrap; min-height: 34px;
+  }
+  .pane-right { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
+  .pane-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .pane-actions button { padding: 2px 9px; font-size: 11.5px; border-radius: 5px; }
+
+  .inline-check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11.5px; color: var(--muted); user-select: none; -webkit-user-select: none; }
+  .inline-check input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+
+  .stats { color: var(--stat); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+
+  textarea {
+    flex: 1 1 auto; width: 100%; resize: none; border: 0; outline: none; background: transparent; color: var(--text);
+    padding: 14px 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 13.5px; line-height: 1.75; tab-size: 2; white-space: pre-wrap; word-break: break-all; overflow-wrap: break-word;
+  }
+  textarea::placeholder { color: var(--muted); opacity: .75; }
+
+  .pane-body { flex: 1 1 auto; position: relative; min-height: 0; overflow: hidden; }
+
+  #preview {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: auto; padding: 14px 20px 40px;
+  }
+  #preview.plain {
+    white-space: pre-wrap; word-break: break-all; overflow-wrap: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; line-height: 1.75;
+  }
+  .empty { color: var(--muted); font-size: 13.5px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); background-clip: content-box; }
+
+  .json-viewer {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: auto; overscroll-behavior: contain; background: var(--bg);
+  }
+  .json-spacer { width: 1px; height: 0; }
+  .json-content {
+    position: absolute; top: 0; left: 0; width: max-content; min-width: 100%;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12.5px; line-height: 20px; will-change: transform;
+  }
+  .json-line { height: 20px; line-height: 20px; white-space: pre; }
+  .json-line:hover { background: var(--jt-line-hover); }
+
+  .json-ln { display: inline-block; width: var(--ln-w, 60px); padding-right: 14px; text-align: right; color: var(--muted); opacity: .45; user-select: none; -webkit-user-select: none; }
+  .json-toggle { display: inline-block; width: 14px; margin-right: 4px; text-align: center; font-size: 10px; line-height: 20px; color: var(--muted); cursor: pointer; user-select: none; -webkit-user-select: none; vertical-align: top; }
+  .json-toggle:hover { color: var(--accent); }
+  .json-toggle-none { cursor: default; }
+  .json-toggle-none:hover { color: var(--muted); }
+  .json-bracket { color: var(--muted); }
+  .json-count { color: var(--muted); opacity: .6; margin-left: 6px; font-size: 11.5px; }
+
+  .jt-key  { color: var(--jt-key); }
+  .jt-str  { color: var(--jt-str); }
+  .jt-num  { color: var(--jt-num); }
+  .jt-bool { color: var(--jt-bool); }
+
+  /* ===== 行内编辑 ===== */
+  .json-line-editing { background: var(--jt-line-hover); }
+  .json-edit-prefix { color: var(--muted); }
+  .json-edit-input {
+    font: inherit;
+    font-size: 12.5px;
+    height: 18px;
+    line-height: 18px;
+    padding: 0 5px;
+    margin: 0;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--text);
+    outline: none;
+    vertical-align: top;
+    box-shadow: 0 0 0 2px rgba(79, 140, 255, .18);
+  }
+  .json-edit-input::selection { background: var(--accent); color: var(--accent-text); }
+
+  .markdown-body { line-height: 1.8; font-size: 14.5px; word-wrap: break-word; word-break: break-word; }
+  .markdown-body > *:first-child { margin-top: 0; }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { margin: 1.4em 0 .6em; line-height: 1.35; font-weight: 600; }
+  .markdown-body h1 { font-size: 1.6em; border-bottom: 1px solid var(--border); padding-bottom: .3em; }
+  .markdown-body h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: .25em; }
+  .markdown-body h3 { font-size: 1.15em; }
+  .markdown-body p { margin: .75em 0; }
+  .markdown-body a { color: var(--accent); text-decoration: none; }
+  .markdown-body a:hover { text-decoration: underline; }
+  .markdown-body strong { color: var(--strong); }
+  .markdown-body code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: .12em .4em; font-size: .88em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .markdown-body pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow: auto; }
+  .markdown-body pre code { background: none; border: 0; padding: 0; font-size: 13px; }
+  .markdown-body blockquote { margin: .9em 0; padding: .1em 0 .1em 14px; border-left: 3px solid var(--accent); color: var(--muted); }
+  .markdown-body ul, .markdown-body ol { padding-left: 1.6em; margin: .7em 0; }
+  .markdown-body li { margin: .25em 0; }
+  .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+  .markdown-body table { border-collapse: collapse; margin: 1em 0; display: block; overflow: auto; }
+  .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 6px 12px; }
+  .markdown-body th { background: var(--th-bg); }
+  .markdown-body img { max-width: 100%; border-radius: 6px; }
+  .markdown-body input[type="checkbox"] { margin-right: .4em; accent-color: var(--accent); }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); background: var(--toast-bg); color: var(--text);
+    border: 1px solid var(--border); padding: 8px 18px; border-radius: 999px; font-size: 13px;
+    box-shadow: var(--toast-shadow); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 99;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 860px) {
+    main { flex-direction: column; }
+    .split-handle { display: none !important; }
+    textarea { min-height: 28vh; }
+    h1 span { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>转义文本 → 真实换行 → Markdown / JSON / XML 预览<span>字面量 \n 自动解析为真实换行 · JSON / XML 预览双击值可编辑</span></h1>
+  <div class="toolbar">
+    <label id="unescapeLabel"><input type="checkbox" id="unescape" checked> 解析转义 <code>\n \t \\ \uXXXX</code></label>
+    <span class="divider"></span>
+    <span class="group-label">渲染</span>
+    <div class="segmented" id="modeGroup" role="group" aria-label="渲染模式">
+      <button type="button" data-mode-btn="text">纯文本</button>
+      <button type="button" data-mode-btn="md" class="active">Markdown</button>
+      <button type="button" data-mode-btn="json">JSON</button>
+      <button type="button" data-mode-btn="xml">XML</button>
+    </div>
+    <span class="divider"></span>
+    <span class="group-label">视图</span>
+    <div class="segmented" id="viewGroup" role="group" aria-label="视图切换">
+      <button type="button" data-view-btn="input">原始</button>
+      <button type="button" data-view-btn="both" class="active">双栏</button>
+      <button type="button" data-view-btn="preview">渲染</button>
+    </div>
+    <span class="spacer"></span>
+    <button id="theme" type="button" title="切换白天 / 夜间模式">☀️ 白天</button>
+    <button id="sample" type="button">示例</button>
+    <button id="copy" type="button">复制</button>
+    <button id="clear" type="button">清空</button>
+  </div>
+</header>
+
+<main id="main" data-view="both">
+  <section class="pane pane-input" id="paneInput">
+    <div class="pane-title">
+      <span>输入</span>
+      <span class="pane-actions">
+        <label class="inline-check" title="左右两侧按比例同步滚动">
+          <input type="checkbox" id="syncScroll" checked> 同步滚动
+        </label>
+        <button id="format" type="button" title="将字面量 \n 替换为真正的换行符 / 格式化 JSON / 格式化 XML">格式化换行</button>
+        <button id="minify" type="button" title="移除所有排版空白，将内容压缩为单行">压缩一行</button>
+      </span>
+    </div>
+    <textarea id="input" spellcheck="false" placeholder="在这里粘贴含 \n 的文本，或粘贴 JSON / XML…"></textarea>
+  </section>
+
+  <div class="split-handle" id="splitHandle" title="拖动调整宽度 · 双击重置"></div>
+
+  <section class="pane pane-preview" id="panePreview">
+    <div class="pane-title">
+      <span>预览</span>
+      <span class="pane-right">
+        <span class="pane-actions hidden" id="jsonActions">
+          <button id="foldAll" type="button">全部折叠</button>
+          <button id="unfoldAll" type="button">全部展开</button>
+        </span>
+        <span class="stats" id="stats"></span>
+      </span>
+    </div>
+    <div class="pane-body">
+      <div id="preview" class="markdown-body"></div>
+      <div id="jsonViewer" class="json-viewer hidden">
+        <div class="json-spacer" id="jsonSpacer"></div>
+        <div class="json-content" id="jsonContent"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var input      = $('input');
+  var preview    = $('preview');
+  var statsEl    = $('stats');
+  var cbUnescape = $('unescape');
+  var cbSync     = $('syncScroll');
+  var btnTheme   = $('theme');
+  var btnFormat  = $('format');
+  var btnMinify  = $('minify');
+  var mainEl     = $('main');
+  var paneInput  = $('paneInput');
+  var panePreview= $('panePreview');
+  var splitHandle= $('splitHandle');
+
+  var jsonEl     = $('jsonViewer');
+  var jsonSpacer = $('jsonSpacer');
+  var jsonBody   = $('jsonContent');
+  var jsonActions= $('jsonActions');
+
+  var modeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-mode-btn]'));
+  var viewButtons = Array.prototype.slice.call(document.querySelectorAll('[data-view-btn]'));
+
+  var SAMPLE_MD = String.raw`**我怎么想**\n【信条】根本，不动摇\n· 知行合一：说要做，就去做。\n· 实事求是： 像这段文本，我复制到任何文本编辑器都不会把\n 作为换行`;
+
+  var SAMPLE_JSON = String.raw`{"name":"demo","version":2,"tags":["a","b","c"],"nested":{"ok":true,"n":null,"pi":3.14159,"deep":{"l1":{"l2":{"l3":[1,2,3,4,5]}}}},"users":[{"id":1,"name":"Alice","roles":["admin","dev"],"active":true},{"id":2,"name":"Bob","roles":["user"],"active":false},{"id":3,"name":"Carol","roles":[],"active":true}]}`;
+
+  var SAMPLE_XML = String.raw`<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <book id="bk101" available="true">
+    <author>Gambardella, Matthew</author>
+    <title>XML Developer's Guide</title>
+    <genre>Computer</genre>
+    <price>44.95</price>
+    <publish_date>2000-10-01</publish_date>
+    <description>An in-depth look at creating applications with XML.</description>
+  </book>
+  <book id="bk102" available="false">
+    <author>Ralls, Kim</author>
+    <title>Midnight Rain</title>
+    <genre>Fantasy</genre>
+    <price>5.95</price>
+    <publish_date>2000-12-16</publish_date>
+    <description>A former architect battles corporate zombies.</description>
+  </book>
+</catalog>`;
+
+  var VIEWS = { input: 1, both: 1, preview: 1 };
+  var MODES = { text: 1, md: 1, json: 1, xml: 1 };
+
+  var renderMode = 'md';
+  var jsonFormatted = null;
+
+  /* ================= 主题 ================= */
+  var root = document.documentElement;
+  function applyTheme(light, persist) {
+    if (light) root.setAttribute('data-theme', 'light');
+    else root.removeAttribute('data-theme');
+    btnTheme.textContent = light ? '🌙 夜间' : '☀️ 白天';
+    if (persist !== false) try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+  }
+  btnTheme.addEventListener('click', function () { applyTheme(root.getAttribute('data-theme') !== 'light'); });
+  (function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem('theme'); } catch (e) {}
+    if (saved === 'light' || saved === 'dark') applyTheme(saved === 'light', false);
+    else applyTheme(!!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches), false);
+  })();
+
+  /* ================= 视图切换 ================= */
+  function applyView(view, persist) {
+    if (!VIEWS[view]) view = 'both';
+    mainEl.setAttribute('data-view', view);
+    viewButtons.forEach(function (btn) {
+      var active = btn.getAttribute('data-view-btn') === view;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (persist !== false) try { localStorage.setItem('view', view); } catch (e) {}
+    requestAnimationFrame(function () {
+      jv.start = -1; jv.end = -1;
+      renderVisible(true);
+    });
+  }
+  viewButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () { applyView(btn.getAttribute('data-view-btn')); });
+  });
+  (function initView() {
+    var saved = null; try { saved = localStorage.getItem('view'); } catch (e) {}
+    applyView(VIEWS[saved] ? saved : 'both', false);
+  })();
+
+  /* ================= 渲染模式切换 ================= */
+  function applyMode(mode, persist) {
+    if (!MODES[mode]) mode = 'md';
+    renderMode = mode;
+    modeButtons.forEach(function (btn) {
+      var active = btn.getAttribute('data-mode-btn') === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    var treeMode = mode === 'json' || mode === 'xml';
+    cbUnescape.disabled = treeMode;
+    $('unescapeLabel').style.opacity = treeMode ? '.45' : '1';
+    jsonActions.classList.toggle('hidden', !treeMode);
+    if (persist !== false) try { localStorage.setItem('mode', mode); } catch (e) {}
+  }
+  modeButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () { applyMode(btn.getAttribute('data-mode-btn')); render(); });
+  });
+  (function initMode() {
+    var saved = null; try { saved = localStorage.getItem('mode'); } catch (e) {}
+    applyMode(MODES[saved] ? saved : 'md', false);
+  })();
+
+  /* ================= 转义解析 ================= */
+  var ESCAPES = { 'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f', 'v': '\v', '0': '\u0000', '\\': '\\', "'": "'", '"': '"', '`': '`', '/': '/' };
+  var ESCAPE_RE = /\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g;
+  function fromCodePointSafe(cp) {
+    if (!isFinite(cp) || cp < 0 || cp > 0x10FFFF) return null;
+    try { return String.fromCodePoint(cp); } catch (e) { return null; }
+  }
+  function unescapeText(s) {
+    return s.replace(ESCAPE_RE, function (match, seq) {
+      if (seq.charAt(0) === 'u') {
+        var hex = seq.charAt(1) === '{' ? seq.slice(2, -1) : seq.slice(1);
+        var out = fromCodePointSafe(parseInt(hex, 16));
+        return out === null ? match : out;
+      }
+      if (seq.charAt(0) === 'x') {
+        var out2 = fromCodePointSafe(parseInt(seq.slice(1), 16));
+        return out2 === null ? match : out2;
+      }
+      return Object.prototype.hasOwnProperty.call(ESCAPES, seq) ? ESCAPES[seq] : match;
+    });
+  }
+  function getParsedText() {
+    var t = input.value;
+    if (renderMode !== 'json' && renderMode !== 'xml' && cbUnescape.checked) t = unescapeText(t);
+    return t.replace(/\r\n?/g, '\n');
+  }
+
+  /* ================= 格式化 ================= */
+  btnFormat.addEventListener('click', function () {
+    var raw = input.value;
+    if (!raw.trim()) { toast('内容为空，无需操作'); return; }
+    if (renderMode === 'json') {
+      try {
+        input.value = JSON.stringify(JSON.parse(raw), null, 2);
+        render(); toast('已格式化 JSON，便于左右比对');
+      } catch (e1) {
+        try {
+          input.value = JSON.stringify(JSON.parse(unescapeText(raw)), null, 2);
+          render(); toast('已还原换行并格式化 JSON');
+        } catch (e2) { toast('JSON 解析失败：' + e1.message); }
+      }
+    } else if (renderMode === 'xml') {
+      try {
+        input.value = formatXml(raw);
+        render(); toast('已格式化 XML');
+      } catch (e) {
+        toast('XML 格式化失败：' + e.message);
+      }
+    } else {
+      var unescapedText = unescapeText(raw);
+      if (unescapedText === raw) toast('没有需要还原的转义字符');
+      else { input.value = unescapedText; render(); toast('已将 \\n 替换为真正的换行'); }
+    }
+    input.focus();
+  });
+
+  /* ================= 压缩为一行 ================= */
+  btnMinify.addEventListener('click', function () {
+    var raw = input.value;
+    if (!raw.trim()) { toast('内容为空，无需操作'); return; }
+    
+    try {
+      if (renderMode === 'json') {
+        var obj;
+        try { obj = JSON.parse(raw); } 
+        catch (e1) { obj = JSON.parse(unescapeText(raw)); }
+        input.value = JSON.stringify(obj);
+        render(); 
+        toast('已压缩为单行 JSON');
+      } else if (renderMode === 'xml') {
+        input.value = minifyXml(raw);
+        render(); 
+        toast('已压缩为单行 XML');
+      } else {
+        input.value = raw.replace(/\s*\n\s*/g, ' ').trim();
+        render(); 
+        toast('已将文本合并为单行');
+      }
+    } catch (e) {
+      toast('压缩失败：' + e.message);
+    }
+    input.focus();
+  });
+
+  /* ================= Markdown ================= */
+  function renderMarkdown(text) {
+    if (typeof window.marked === 'undefined') return null;
+    var opts = { breaks: true, gfm: true };
+    try {
+      return typeof window.marked.parse === 'function' ? window.marked.parse(text, opts) : window.marked(text, opts);
+    } catch (e) { return null; }
+  }
+
+  /* ================= HTML 转义 ================= */
+  function escapeHtml(s) {
+    return s.replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; });
+  }
+  function escapeAttr(s) {
+    return s.replace(/[&<>"]/g, function (c) {
+      return c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;';
+    });
+  }
+
+  /* ================= JSON 高亮 ================= */
+  var JSON_TOKEN_RE = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+  function highlightJsonLine(line) {
+    if (!line) return '';
+    var out = '', last = 0, m;
+    JSON_TOKEN_RE.lastIndex = 0;
+    while ((m = JSON_TOKEN_RE.exec(line)) !== null) {
+      if (m.index > last) out += escapeHtml(line.slice(last, m.index));
+      if (m[1] !== undefined) {
+        if (m[2] !== undefined) out += '<span class="jt-key">' + escapeHtml(m[1]) + '</span>' + m[2];
+        else out += '<span class="jt-str">' + escapeHtml(m[1]) + '</span>';
+      } else if (m[3] !== undefined) out += '<span class="jt-bool">' + m[3] + '</span>';
+      else if (m[4] !== undefined) out += '<span class="jt-num">' + m[4] + '</span>';
+      last = m.index + m[0].length;
+      if (m[0].length === 0) { JSON_TOKEN_RE.lastIndex++; }
+    }
+    if (last < line.length) out += escapeHtml(line.slice(last));
+    return out;
+  }
+
+  /* ================= JSON 结构分析 ================= */
+  function analyzeJson(lines) {
+    var blocks = new Map(), stack = [], n = lines.length;
+    for (var i = 0; i < n; i++) {
+      var line = lines[i], ind = 0;
+      while (ind < line.length && (line.charCodeAt(ind) === 32 || line.charCodeAt(ind) === 9)) ind++;
+      if (stack.length) {
+        var top = stack[stack.length - 1];
+        if (ind > top.indent) {
+          if (top.childIndent === -1) top.childIndent = ind;
+          if (ind === top.childIndent) top.count++;
+        }
+      }
+      var inStr = false, esc = false;
+      for (var k = 0; k < line.length; k++) {
+        var ch = line.charCodeAt(k);
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === 92) esc = true;
+          else if (ch === 34) inStr = false;
+          continue;
+        }
+        if (ch === 34) { inStr = true; continue; }
+        if (ch === 123) stack.push({ start: i, indent: ind, isArray: false, count: 0, childIndent: -1 });
+        else if (ch === 91) stack.push({ start: i, indent: ind, isArray: true, count: 0, childIndent: -1 });
+        else if (ch === 125 || ch === 93) {
+          var open = stack.pop();
+          if (open && open.start !== i) blocks.set(open.start, { end: i, isArray: open.isArray, count: open.count, indent: open.indent });
+        }
+      }
+    }
+    return blocks;
+  }
+
+  /* ================= JSON 序列化 + 路径信息 ================= */
+  function buildJsonLines(obj) {
+    var lines = [], lineInfo = [];
+    function repeat(n) { var s = ''; for (var i = 0; i < n; i++) s += '  '; return s; }
+
+    function emit(value, depth, path, keyPrefix) {
+      var ind = repeat(depth);
+      if (value !== null && typeof value === 'object') {
+        var isArr = Array.isArray(value);
+        var keys;
+        if (isArr) { keys = []; for (var i = 0; i < value.length; i++) keys.push(i); }
+        else keys = Object.keys(value);
+
+        if (keys.length === 0) {
+          lines.push(ind + keyPrefix + (isArr ? '[]' : '{}'));
+          lineInfo.push(null);
+          return;
+        }
+        lines.push(ind + keyPrefix + (isArr ? '[' : '{'));
+        lineInfo.push(null);
+        for (var j = 0; j < keys.length; j++) {
+          var k = keys[j];
+          var childPrefix = isArr ? '' : JSON.stringify(String(k)) + ': ';
+          emit(value[k], depth + 1, path.concat([k]), childPrefix);
+          if (j < keys.length - 1) lines[lines.length - 1] += ',';
+        }
+        lines.push(ind + (isArr ? ']' : '}'));
+        lineInfo.push(null);
+      } else {
+        var vtext = JSON.stringify(value);
+        if (vtext === undefined) vtext = 'null';
+        lines.push(ind + keyPrefix + vtext);
+        lineInfo.push({
+          path: path,
+          prefix: keyPrefix,
+          valueText: vtext,
+          type: value === null ? 'null' : typeof value
+        });
+      }
+    }
+
+    emit(obj, 0, [], '');
+    return { lines: lines, lineInfo: lineInfo };
+  }
+
+  function parseEditedValue(info, text) {
+    if (info.type === 'string') {
+      try {
+        return { ok: true, value: JSON.parse('"' + text.replace(/"/g, '\\"') + '"') };
+      } catch (e) { return { ok: false }; }
+    }
+    var t = text.trim();
+    if (info.type === 'number') {
+      if (t === '') return { ok: false };
+      var n = Number(t);
+      if (!isFinite(n)) return { ok: false };
+      return { ok: true, value: n };
+    }
+    if (info.type === 'boolean') {
+      if (t === 'true') return { ok: true, value: true };
+      if (t === 'false') return { ok: true, value: false };
+      return { ok: false };
+    }
+    try { return { ok: true, value: JSON.parse(t) }; }
+    catch (e) { return { ok: false }; }
+  }
+
+  /* ================= XML 工具 ================= */
+  function escapeXmlText(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeXmlAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function coerceXmlText(t) {
+    if (t === '') return '';
+    if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(t)) {
+      var n = Number(t);
+      if (isFinite(n)) return n;
+    }
+    if (t === 'true') return true;
+    if (t === 'false') return false;
+    return t;
+  }
+
+  function xmlToJson(doc) {
+    var root = doc.documentElement;
+    if (!root) throw new Error('未找到根元素');
+    var result = {};
+    result[root.tagName] = elementToValue(root);
+    return result;
+  }
+
+  function elementToValue(el) {
+    var obj = {}, hasAttr = false;
+    for (var i = 0; i < el.attributes.length; i++) {
+      var a = el.attributes[i];
+      obj['@' + a.name] = a.value;
+      hasAttr = true;
+    }
+    var childEls = [], text = '';
+    for (var j = 0; j < el.childNodes.length; j++) {
+      var n = el.childNodes[j];
+      if (n.nodeType === 1) childEls.push(n);
+      else if (n.nodeType === 3) text += n.nodeValue;
+    }
+    text = text.trim();
+
+    if (childEls.length === 0) {
+      if (!hasAttr) return coerceXmlText(text);
+      if (text) obj['#text'] = coerceXmlText(text);
+      return obj;
+    }
+    for (var k = 0; k < childEls.length; k++) {
+      var child = childEls[k];
+      var key = child.tagName;
+      var val = elementToValue(child);
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) obj[key] = val;
+      else if (Array.isArray(obj[key])) obj[key].push(val);
+      else obj[key] = [obj[key], val];
+    }
+    if (text) obj['#text'] = coerceXmlText(text);
+    return obj;
+  }
+
+  function jsonToXml(data) {
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('根节点必须是对象');
+    }
+    var keys = Object.keys(data);
+    if (keys.length !== 1) throw new Error('根节点必须恰好有一个键（当前 ' + keys.length + ' 个）');
+    var rootName = keys[0];
+    if (rootName.charAt(0) === '@' || rootName === '#text') throw new Error('根节点键名非法');
+    var rootVal = data[rootName];
+    if (Array.isArray(rootVal)) throw new Error('根节点的值不能是数组');
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + valueToXml(rootName, rootVal, 0);
+  }
+
+  function valueToXml(name, value, depth) {
+    var ind = '  '.repeat(depth);
+    var attrs = '', text = '', children = '';
+
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      var keys = Object.keys(value);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i], v = value[k];
+        if (k.charAt(0) === '@') {
+          attrs += ' ' + k.slice(1) + '="' + escapeXmlAttr(String(v)) + '"';
+        } else if (k === '#text') {
+          text = String(v);
+        } else if (Array.isArray(v)) {
+          for (var j = 0; j < v.length; j++) children += '\n' + valueToXml(k, v[j], depth + 1);
+        } else {
+          children += '\n' + valueToXml(k, v, depth + 1);
+        }
+      }
+      if (children) return ind + '<' + name + attrs + '>' + children + '\n' + ind + '</' + name + '>';
+      if (text !== '') return ind + '<' + name + attrs + '>' + escapeXmlText(text) + '</' + name + '>';
+      return ind + '<' + name + attrs + '/>';
+    }
+
+    var s = value === null ? '' : String(value);
+    if (s === '') return ind + '<' + name + '/>';
+    return ind + '<' + name + '>' + escapeXmlText(s) + '</' + name + '>';
+  }
+
+  function formatXml(text) {
+    var src = String(text).replace(/^\uFEFF/, '');
+    var doc = new DOMParser().parseFromString(src, 'text/xml');
+    var pe = doc.querySelector('parsererror');
+    if (pe) {
+      var m = (pe.textContent || '').replace(/\s+/g, ' ').trim();
+      throw new Error(m || 'XML 格式错误');
+    }
+    if (!doc.documentElement) throw new Error('未找到根元素');
+    var decl = src.match(/^\s*<\?xml[^?]*\?>/);
+    return (decl ? decl[0].trim() + '\n' : '') + serializeXmlNode(doc.documentElement, 0);
+  }
+
+  function serializeXmlNode(node, depth) {
+    var ind = '  '.repeat(depth);
+    if (node.nodeType === 3) {
+      var t = node.nodeValue.trim();
+      return t ? ind + escapeXmlText(t) : '';
+    }
+    if (node.nodeType === 8) return ind + '<!--' + node.nodeValue + '-->';
+    if (node.nodeType !== 1) return '';
+    var attrs = '';
+    for (var i = 0; i < node.attributes.length; i++) {
+      var a = node.attributes[i];
+      attrs += ' ' + a.name + '="' + escapeXmlAttr(a.value) + '"';
+    }
+    var kids = [];
+    for (var j = 0; j < node.childNodes.length; j++) {
+      var c = node.childNodes[j];
+      if (c.nodeType === 1 || c.nodeType === 8) kids.push(c);
+      else if (c.nodeType === 3 && c.nodeValue.trim()) kids.push(c);
+    }
+    if (kids.length === 0) return ind + '<' + node.tagName + attrs + '/>';
+    if (kids.length === 1 && kids[0].nodeType === 3) {
+      return ind + '<' + node.tagName + attrs + '>' + escapeXmlText(kids[0].nodeValue.trim()) + '</' + node.tagName + '>';
+    }
+    var inner = kids.map(function (c) { return serializeXmlNode(c, depth + 1); }).filter(Boolean).join('\n');
+    return ind + '<' + node.tagName + attrs + '>\n' + inner + '\n' + ind + '</' + node.tagName + '>';
+  }
+
+  // 压缩 XML 为单行（修复重复声明与空白问题）
+  function minifyXml(text) {
+    var src = String(text).replace(/^\uFEFF/, '');
+    var doc = new DOMParser().parseFromString(src, 'text/xml');
+    var pe = doc.querySelector('parsererror');
+    if (pe) throw new Error('XML 格式错误');
+
+    function cleanWhitespace(node) {
+      for (var i = node.childNodes.length - 1; i >= 0; i--) {
+        var child = node.childNodes[i];
+        if (child.nodeType === 3) {
+          if (!child.nodeValue.trim()) {
+            node.removeChild(child);
+          }
+        } else if (child.nodeType === 1) {
+          cleanWhitespace(child);
+        }
+      }
+    }
+    cleanWhitespace(doc.documentElement);
+
+    var serializer = new XMLSerializer();
+    // 仅序列化根元素，避免自动带上 xml declaration 导致重复
+    var xmlStr = serializer.serializeToString(doc.documentElement);
+    var declMatch = src.match(/^\s*<\?xml[^?]*\?>/);
+    var decl = declMatch ? declMatch[0].trim() + ' ' : '';
+    
+    return decl + xmlStr.replace(/\n\s*/g, '');
+  }
+
+  /* ================= JSON 虚拟滚动 + 折叠 + 编辑 ================= */
+  var LH = 20, BUFFER = 10, SMALL_LINES = 400;
+  var jv = {
+    raw: [], blocks: new Map(), collapsed: new Set(), visible: [],
+    start: -1, end: -1, raf: false,
+    lineInfo: [], data: null, editing: null, kind: 'json'
+  };
+
+  function buildVisible() {
+    var raw = jv.raw, n = raw.length, vis = [], blocks = jv.blocks, collapsed = jv.collapsed, hasFold = collapsed.size > 0, i = 0;
+    while (i < n) {
+      if (hasFold && collapsed.has(i)) {
+        var b = blocks.get(i);
+        if (b) { vis.push({ row: i, folded: true, end: b.end }); i = b.end + 1; continue; }
+      }
+      vis.push({ row: i, folded: false });
+      i++;
+    }
+    jv.visible = vis;
+  }
+
+  function rebuildVisible() {
+    buildVisible();
+    jsonSpacer.style.height = (jv.visible.length * LH) + 'px';
+    var max = Math.max(0, jv.visible.length * LH - jsonEl.clientHeight);
+    if (jsonEl.scrollTop > max) jsonEl.scrollTop = max;
+    jv.start = -1; jv.end = -1;
+  }
+
+  function renderLine(item) {
+    var row = item.row, raw = jv.raw[row], toggleHtml, codeHtml;
+
+    if (jv.editing && jv.editing.row === row && !item.folded) {
+      var info = jv.lineInfo[row];
+      if (info) {
+        var ind = raw.match(/^[ \t]*/)[0];
+        var display = info.type === 'string' ? info.valueText.slice(1, -1) : info.valueText;
+        
+        var visualLen = 0;
+        for (var si = 0; si < display.length; si++) {
+            visualLen += display.charCodeAt(si) > 255 ? 2 : 1;
+        }
+        var calcW = Math.max(150, visualLen * 7.8 + 40);
+        var styleW = 'width: ' + Math.round(calcW) + 'px; max-width: 90vw;';
+
+        return '<div class="json-line json-line-editing" data-row="' + row + '">' +
+               '<span class="json-ln">' + (row + 1) + '</span>' +
+               '<span class="json-toggle json-toggle-none"></span>' +
+               '<span class="json-edit-prefix">' + escapeHtml(ind + info.prefix) + '</span>' +
+               '<input class="json-edit-input" type="text" spellcheck="false" value="' + escapeAttr(display) + '" style="' + styleW + '">' +
+               '</div>';
+      }
+    }
+
+    if (item.folded) {
+      var b = jv.blocks.get(row);
+      var trimmed = raw.replace(/[{[]\s*$/, '');
+      var open = b.isArray ? '[' : '{', close = b.isArray ? ']' : '}';
+      codeHtml = highlightJsonLine(trimmed) + '<span class="json-bracket">' + open + ' … ' + close + '</span><span class="json-count">' + b.count + (b.isArray ? ' items' : ' keys') + '</span>';
+      toggleHtml = '<span class="json-toggle" title="展开">▸</span>';
+    } else {
+      codeHtml = highlightJsonLine(raw);
+      toggleHtml = jv.blocks.has(row) ? '<span class="json-toggle" title="折叠">▾</span>' : '<span class="json-toggle json-toggle-none"></span>';
+    }
+    return '<div class="json-line" data-row="' + row + '"><span class="json-ln">' + (row + 1) + '</span>' + toggleHtml + codeHtml + '</div>';
+  }
+
+  function renderVisible(force) {
+    var vis = jv.visible, total = vis.length;
+    if (!total) { jsonBody.innerHTML = ''; return; }
+
+    var h = jsonEl.clientHeight;
+    if (!h) {
+      if (force) requestAnimationFrame(function () { renderVisible(true); });
+      return;
+    }
+
+    var start, end;
+    if (total <= SMALL_LINES) {
+      start = 0; end = total;
+    } else {
+      var st = jsonEl.scrollTop;
+      start = Math.floor(st / LH) - BUFFER;
+      if (start < 0) start = 0;
+      end = Math.ceil((st + h) / LH) + BUFFER;
+      if (end > total) end = total;
+    }
+
+    if (start >= end) {
+      start = Math.max(0, Math.min(total - 1, Math.floor(jsonEl.scrollTop / LH)));
+      end = Math.min(total, start + Math.ceil(h / LH) + BUFFER);
+    }
+
+    if (jv.editing && (jv.editing.row < start || jv.editing.row >= end)) {
+      jv.editing = null;
+      force = true;
+    }
+
+    if (!force && start === jv.start && end === jv.end && jsonBody.children.length > 0) return;
+
+    jv.start = start; jv.end = end;
+    var parts = new Array(end - start);
+    for (var i = start; i < end; i++) parts[i - start] = renderLine(vis[i]);
+    jsonBody.innerHTML = parts.join('');
+    jsonBody.style.transform = 'translateY(' + (start * LH) + 'px)';
+  }
+
+  function toggleFold(row) {
+    if (!jv.blocks.has(row)) return;
+    if (jv.collapsed.has(row)) jv.collapsed.delete(row);
+    else jv.collapsed.add(row);
+    rebuildVisible();
+    renderVisible(true);
+  }
+
+  jsonBody.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.classList) return;
+    if (t.classList.contains('json-edit-input')) return;
+    if (!t.classList.contains('json-toggle') || t.classList.contains('json-toggle-none')) return;
+    var lineEl = t.parentNode;
+    if (!lineEl) return;
+    var row = parseInt(lineEl.getAttribute('data-row'), 10);
+    if (!isNaN(row)) toggleFold(row);
+  });
+
+  function focusEditor() {
+    var inp = jsonBody.querySelector('.json-edit-input');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+
+  function startEdit(row) {
+    if (jv.editing && jv.editing.row === row) return;
+    if (jv.collapsed.has(row)) return;
+    var info = jv.lineInfo[row];
+    if (!info) return;
+    jv.editing = { row: row };
+    renderVisible(true);
+    focusEditor();
+  }
+
+  function cancelEdit() {
+    if (!jv.editing) return;
+    jv.editing = null;
+    renderVisible(true);
+  }
+
+  function commitEdit(text) {
+    if (!jv.editing) return;
+    var row = jv.editing.row;
+    jv.editing = null;
+
+    var info = jv.lineInfo[row];
+    if (!info) { renderVisible(true); return; }
+
+    var parsed = parseEditedValue(info, text);
+    if (!parsed.ok) {
+      toast('值格式不正确：' + (info.type === 'string' ? '文本' : info.type));
+      renderVisible(true);
+      return;
+    }
+
+    var data = jv.data;
+    if (!info.path.length) {
+      data = parsed.value;
+    } else {
+      var cur = data;
+      for (var i = 0; i < info.path.length - 1; i++) cur = cur[info.path[i]];
+      cur[info.path[info.path.length - 1]] = parsed.value;
+    }
+    applyEditedData(data);
+  }
+
+  function applyEditedData(data) {
+    jv.data = data;
+
+    var built;
+    try { built = buildJsonLines(data); }
+    catch (e) { toast('序列化失败：' + e.message); renderVisible(true); return; }
+
+    var oldLen = jv.raw.length;
+    jv.raw = built.lines;
+    jv.lineInfo = built.lineInfo;
+    jsonFormatted = jv.raw.join('\n');
+    jv.blocks = analyzeJson(jv.raw);
+
+    if (jv.collapsed.size) {
+      var valid = new Set();
+      jv.collapsed.forEach(function (r) { if (r < jv.raw.length && jv.blocks.has(r)) valid.add(r); });
+      jv.collapsed = valid;
+    }
+
+    jv.start = -1; jv.end = -1;
+    jsonBody.style.setProperty('--ln-w', (Math.max(3, String(jv.raw.length).length) * 8 + 26) + 'px');
+    buildVisible();
+    jsonSpacer.style.height = (jv.visible.length * LH) + 'px';
+    renderVisible(true);
+
+    var prefix = jv.kind === 'xml' ? 'XML → JSON' : 'JSON';
+    setStats(prefix + ' · ' + jv.raw.length + ' 行 · ' + jsonFormatted.length + ' 字符 · ' + jv.blocks.size + ' 个可折叠' +
+             (oldLen !== jv.raw.length ? ' · 结构已变化' : ''));
+
+    if (jv.kind === 'xml') {
+      var xmlText = null;
+      try { xmlText = jsonToXml(data); }
+      catch (e) { toast('无法转回 XML：' + e.message); return; }
+      if (input.value !== xmlText) input.value = xmlText;
+      toast('已同步回 XML');
+    } else {
+      if (input.value !== jsonFormatted) input.value = jsonFormatted;
+    }
+  }
+
+  jsonBody.addEventListener('dblclick', function (e) {
+    var t = e.target;
+    if (t && t.classList && t.classList.contains('json-edit-input')) return;
+    var lineEl = t && t.closest ? t.closest('.json-line') : null;
+    if (!lineEl) return;
+    var row = parseInt(lineEl.getAttribute('data-row'), 10);
+    if (isNaN(row)) return;
+    startEdit(row);
+  });
+
+  jsonBody.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (!t || !t.classList || !t.classList.contains('json-edit-input')) return;
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(t.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+    else if (e.key === 'Tab') { e.preventDefault(); commitEdit(t.value); }
+  });
+
+  jsonBody.addEventListener('focusout', function (e) {
+    var t = e.target;
+    if (!t || !t.classList || !t.classList.contains('json-edit-input')) return;
+    if (!jv.editing) return;
+    commitEdit(t.value);
+  });
+
+  $('foldAll').addEventListener('click', function () {
+    jv.editing = null;
+    jv.collapsed.clear();
+    jv.blocks.forEach(function (b, s) { jv.collapsed.add(s); });
+    rebuildVisible(); renderVisible(true);
+  });
+
+  $('unfoldAll').addEventListener('click', function () {
+    jv.editing = null;
+    if (!jv.collapsed.size) return;
+    jv.collapsed.clear(); rebuildVisible(); renderVisible(true);
+  });
+
+  /* ================= 同步滚动 ================= */
+  var syncLock = false;
+  function getRightScroller() { return jsonEl.classList.contains('hidden') ? preview : jsonEl; }
+  function syncScroll(from, to) {
+    if (!cbSync.checked || syncLock || !from || !to) return;
+    var fromMax = from.scrollHeight - from.clientHeight;
+    if (fromMax <= 0) return;
+    var toMax = to.scrollHeight - to.clientHeight;
+    if (toMax <= 0) return;
+    syncLock = true;
+    to.scrollTop = (from.scrollTop / fromMax) * toMax;
+    requestAnimationFrame(function () { syncLock = false; });
+  }
+  input.addEventListener('scroll', function () { syncScroll(input, getRightScroller()); }, { passive: true });
+  preview.addEventListener('scroll', function () { syncScroll(preview, input); }, { passive: true });
+  jsonEl.addEventListener('scroll', function () { syncScroll(jsonEl, input); }, { passive: true });
+
+  /* ================= 分隔条拖动 ================= */
+  var dragging = false, dragStartX = 0, dragStartLeft = 0;
+  function applySplitWidth(w) {
+    var total = mainEl.getBoundingClientRect().width;
+    if (total <= 0) return;
+    var handleW = splitHandle.offsetWidth || 5;
+    var min = 220, max = total - handleW - 220;
+    if (max < min) max = min;
+    if (w < min) w = min; if (w > max) w = max;
+    paneInput.style.flex = '0 0 ' + w + 'px';
+    panePreview.style.flex = '1 1 0';
+    jv.start = -1; jv.end = -1;
+    requestAnimationFrame(function () { renderVisible(true); });
+  }
+  function clearSplitWidth() {
+    paneInput.style.flex = ''; panePreview.style.flex = '';
+    jv.start = -1; jv.end = -1;
+    requestAnimationFrame(function () { renderVisible(true); });
+  }
+  splitHandle.addEventListener('mousedown', function (e) {
+    if (window.innerWidth <= 860 || mainEl.getAttribute('data-view') !== 'both') return;
+    dragging = true; dragStartX = e.clientX;
+    dragStartLeft = paneInput.getBoundingClientRect().width;
+    splitHandle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (dragging) applySplitWidth(dragStartLeft + (e.clientX - dragStartX));
+  });
+  document.addEventListener('mouseup', function () {
+    if (!dragging) return;
+    dragging = false; splitHandle.classList.remove('dragging');
+    document.body.style.cursor = ''; document.body.style.userSelect = '';
+    var w = paneInput.getBoundingClientRect().width;
+    if (w > 0) try { localStorage.setItem('splitWidth', Math.round(w)); } catch (e) {}
+  });
+  splitHandle.addEventListener('dblclick', function () {
+    try { localStorage.removeItem('splitWidth'); } catch (e) {}
+    clearSplitWidth(); toast('已重置为双栏均分');
+  });
+  (function restoreSplitWidth() {
+    if (window.innerWidth <= 860) return;
+    var w = null; try { w = parseInt(localStorage.getItem('splitWidth'), 10); } catch (e) {}
+    if (w && w > 0) applySplitWidth(w);
+  })();
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (window.innerWidth <= 860) return clearSplitWidth();
+      var m = paneInput.style.flex && paneInput.style.flex.match(/0 0 (\d+(?:\.\d+)?)px/);
+      if (m) applySplitWidth(parseFloat(m[1]));
+      jv.start = -1; jv.end = -1; renderVisible(true);
+    }, 120);
+  });
+
+  /* ================= 滚动条 / Resize ================= */
+  jsonEl.addEventListener('scroll', function () {
+    if (jv.raf) return;
+    jv.raf = true;
+    requestAnimationFrame(function () { jv.raf = false; renderVisible(false); });
+  }, { passive: true });
+
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(function () { jv.start = -1; jv.end = -1; renderVisible(true); }).observe(jsonEl);
+  } else {
+    window.addEventListener('resize', function () { jv.start = -1; jv.end = -1; renderVisible(true); });
+  }
+
+  /* ================= 面板切换 ================= */
+  function showPreviewPane() { jsonEl.classList.add('hidden'); preview.classList.remove('hidden'); }
+  function showJsonPane() { preview.classList.add('hidden'); jsonEl.classList.remove('hidden'); void jsonEl.offsetHeight; }
+  function setStats(s) { statsEl.textContent = s; }
+
+  function clearTree() {
+    jv.raw = []; jv.visible = []; jv.blocks = new Map(); jv.collapsed = new Set();
+    jv.lineInfo = []; jv.data = null; jv.editing = null; jv.kind = 'json';
+    jv.start = -1; jv.end = -1; jsonSpacer.style.height = '0px'; jsonBody.innerHTML = '';
+    jsonFormatted = null;
+  }
+
+  /* ================= 渲染主流程 ================= */
+  function render() {
+    var text = getParsedText();
+    if (text.trim() === '') {
+      clearTree();
+      showPreviewPane();
+      preview.classList.remove('plain');
+      preview.innerHTML = '<p class="empty">在左侧输入或粘贴文本，这里会显示解析后的效果。</p>';
+      setStats('等待输入…');
+      return;
+    }
+    if (renderMode === 'json') renderJson(text);
+    else if (renderMode === 'xml') renderXml(text);
+    else renderTextual(text);
+  }
+
+  function renderTextual(text) {
+    jsonFormatted = null;
+    var html = renderMode === 'md' ? renderMarkdown(text) : null;
+    showPreviewPane();
+    if (html === null || html === undefined) {
+      preview.classList.add('plain'); preview.textContent = text;
+    } else {
+      preview.classList.remove('plain');
+      preview.innerHTML = typeof window.DOMPurify !== 'undefined' ? window.DOMPurify.sanitize(html) : html;
+    }
+    setStats('解析后 ' + text.split('\n').length + ' 行 · ' + text.length + ' 字符');
+  }
+
+  function renderJson(text) {
+    var t0 = window.performance && performance.now ? performance.now() : Date.now();
+    var obj;
+    try {
+      obj = JSON.parse(text);
+    } catch (e) {
+      clearTree();
+      showPreviewPane(); preview.classList.add('plain');
+      preview.textContent = 'JSON 解析失败：\n' + e.message + '\n\n提示：切到「原始」视图可以查看并修改原文。\n（JSON 模式下不会解析 \\n 等转义，因为它们在 JSON 字符串里本来就合法。）';
+      setStats('JSON 解析失败');
+      return;
+    }
+    renderTree(obj, 'json', t0);
+  }
+
+  function renderXml(text) {
+    var t0 = window.performance && performance.now ? performance.now() : Date.now();
+    var doc;
+    try {
+      doc = new DOMParser().parseFromString(text.replace(/^\uFEFF/, ''), 'text/xml');
+      var pe = doc.querySelector('parsererror');
+      if (pe) {
+        var m = (pe.textContent || '').replace(/\s+/g, ' ').trim();
+        throw new Error(m || 'XML 格式错误');
+      }
+      if (!doc.documentElement) throw new Error('未找到根元素');
+    } catch (e) {
+      clearTree();
+      showPreviewPane(); preview.classList.add('plain');
+      preview.textContent = 'XML 解析失败：\n' + e.message + '\n\n提示：切到「原始」视图可以查看并修改原文。';
+      setStats('XML 解析失败');
+      return;
+    }
+
+    var obj;
+    try {
+      obj = xmlToJson(doc);
+    } catch (e) {
+      clearTree();
+      showPreviewPane(); preview.classList.add('plain');
+      preview.textContent = 'XML → JSON 转换失败：\n' + e.message;
+      setStats('XML 转换失败');
+      return;
+    }
+    renderTree(obj, 'xml', t0);
+  }
+
+  function renderTree(data, kind, t0) {
+    var built;
+    try {
+      built = buildJsonLines(data);
+    } catch (e) {
+      clearTree();
+      showPreviewPane(); preview.classList.add('plain');
+      preview.textContent = '序列化失败：' + e.message;
+      setStats('序列化失败');
+      return;
+    }
+
+    showJsonPane();
+    jv.kind = kind;
+    jv.data = data;
+    jv.raw = built.lines;
+    jv.lineInfo = built.lineInfo;
+    jv.editing = null;
+    jsonFormatted = jv.raw.join('\n');
+    jv.blocks = analyzeJson(jv.raw);
+    jv.collapsed = new Set();
+    jv.start = -1; jv.end = -1;
+
+    jsonBody.style.setProperty('--ln-w', (Math.max(3, String(jv.raw.length).length) * 8 + 26) + 'px');
+    jsonEl.scrollTop = 0;
+    buildVisible();
+    jsonSpacer.style.height = (jv.visible.length * LH) + 'px';
+
+    requestAnimationFrame(function () {
+      renderVisible(true);
+      setTimeout(function () { renderVisible(true); }, 50);
+    });
+
+    var t1 = window.performance && performance.now ? performance.now() : Date.now();
+    var prefix = kind === 'xml' ? 'XML → JSON' : 'JSON';
+    setStats(prefix + ' · ' + jv.raw.length + ' 行 · ' + jsonFormatted.length + ' 字符 · ' + jv.blocks.size + ' 个可折叠 · 解析 ' + Math.round(t1 - t0) + ' ms' + (jv.raw.length > SMALL_LINES ? ' · 虚拟滚动' : '') + ' · 双击可编辑');
+  }
+
+  /* ================= 输入防抖 ================= */
+  var timer = null;
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(render, input.value.length > 400000 ? 450 : 160);
+  }
+  input.addEventListener('input', schedule);
+  cbUnescape.addEventListener('change', function () { render(); });
+
+  /* ================= 其他按钮 ================= */
+  $('sample').addEventListener('click', function () {
+    input.value = renderMode === 'json' ? SAMPLE_JSON : renderMode === 'xml' ? SAMPLE_XML : SAMPLE_MD;
+    input.scrollTop = 0; render(); input.focus();
+  });
+  $('clear').addEventListener('click', function () {
+    input.value = ''; render(); input.focus();
+  });
+  $('copy').addEventListener('click', function () {
+    var text;
+    if (renderMode === 'xml') {
+      try { text = formatXml(input.value); } catch (e) { text = input.value; }
+    } else if (renderMode === 'json' && jsonFormatted !== null) {
+      text = jsonFormatted;
+    } else {
+      text = getParsedText();
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.top = '-1000px';
+      document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.parentNode.removeChild(ta); toast(ok ? '已复制' : '复制失败');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast('已复制'); }).catch(fallback);
+    } else fallback();
+  });
+
+  /* ================= Toast ================= */
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $('toast');
+    if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1600);
+  }
+
+  /* ================= 启动 ================= */
+  input.value = renderMode === 'json' ? SAMPLE_JSON : renderMode === 'xml' ? SAMPLE_XML : SAMPLE_MD;
+  render();
+})();
+</script>
+</body>
+</html>
