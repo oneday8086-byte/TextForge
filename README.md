@@ -1,7 +1,10 @@
 # ⚒️ TextForge
 
-> **A minimalist, high-performance Swiss Army Knife for text, JSON, and XML parsing.**
+> **A minimalist, high-performance Swiss Army Knife for text, JSON, and XML parsing.**  
 > 一款极简、高效的文本与数据格式转换/预览瑞士军刀。
+
+[![Made with AI](https://img.shields.io/badge/Made%20with-AI%20Pair%20Programming-blueviolet.svg)](#-开发故事--致谢)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg)](#)
 
 TextForge 是一个单文件的纯前端 Web 工具，专为开发者设计。它不仅能自动将字面量转义字符（如 `\n`, `\t`）解析为真实的换行，还能实时预览 Markdown，并提供可交互、可编辑的 JSON 与 XML 树状视图。
 
@@ -30,9 +33,47 @@ TextForge 是一个单文件的纯前端 Web 工具，专为开发者设计。�
 
 ### 方式二：本地开发
 由于是纯静态单文件项目，你可以使用任何本地静态服务器运行：
+
 ```bash
 # 使用 Python
 python -m http.server 8080
 
 # 或使用 Node.js (http-server)
 npx http-server .
+```
+
+## 🌐 在线体验 & 部署 (Demo & Deployment)
+
+本项目非常适合部署在各类免费的静态托管平台：
+- **腾讯云 EdgeOne Pages** (推荐，国内访问速度极佳)
+- **GitHub Pages** (适合作为开源项目展示)
+- **Cloudflare Pages / Vercel** 等。
+
+> **部署建议**：如果部署在国内平台（如 EdgeOne），建议将外部 CDN 依赖（marked, purify）本地化，以确保 100% 的可用性。
+
+## 🛠️ 技术栈 (Tech Stack)
+
+- **HTML5 / CSS3 / Vanilla JavaScript** (无框架依赖，极致轻量)
+- **[marked](https://github.com/markedjs/marked)**: 极速 Markdown 解析。
+- **[DOMPurify](https://github.com/cure53/DOMPurify)**: 强大的 XSS 防护与 HTML 净化。
+- **虚拟滚动 (Virtual Scrolling)**：原生 JS 实现，专为海量数据优化渲染性能。
+
+---
+
+## 🤖 开发故事 & 致谢 (Acknowledgments)
+
+这个项目的诞生非常有趣：**这里 100% 的代码都是由 AI 编写的。**
+
+整个开发过程采用了“人类产品经理 + AI 程序员”的结对编程模式：
+*   人类负责提需求：“我要转义解析”、“加个 JSON 编辑器”、“支持一下 XML”、“输入框太窄了改宽点”、“压缩功能报错了修一下”……
+*   AI 负责疯狂输出代码、修复 Bug、完善虚拟滚动算法，并且在你打字问问题的时候，乖巧地回答：“好的，这是修改后的完整代码。”
+
+特别感谢 [DeepSeek](https://www.deepseek.com/) 提供的强大代码生成与上下文理解能力，让这个纯手工打磨的单文件工具成为了可能。
+
+*(人类开发者的唯一特权：在键盘上敲下 `Ctrl + C` 和 `Ctrl + V`，以及回复“666666，给你点赞”。)*
+
+---
+
+## 📄 开源协议 (License)
+
+[MIT License](LICENSE) © TextForge
